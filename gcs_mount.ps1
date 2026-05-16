@@ -1414,7 +1414,6 @@ function Start-MountJob($MountConfig) {
                 <StackPanel Grid.Row="3" Margin="0,15,0,0">
                     <Button Name="btnConnect" Content="Connect Drive" Height="35" Background="#10B981" Margin="0,0,0,10" IsEnabled="False"/>
                     <Button Name="btnDisconnect" Content="Disconnect Drive" Height="35" Background="#F59E0B" Margin="0,0,0,10" IsEnabled="False"/>
-                    <Button Name="btnRefreshFolders" Content="Refresh Folder" Height="30" Background="#3B82F6" Margin="0,0,0,10" IsEnabled="False"/>
                     <Button Name="btnGlobalSet" Content="Settings" Height="30" Background="#4B5563"/>
                 </StackPanel>
             </Grid>
@@ -1568,7 +1567,7 @@ $cmbBucket = $window.FindName("cmbBucket"); $txtProject = $window.FindName("txtP
 $chkAutoMount = $window.FindName("chkAutoMount")
 $btnGlobalSet = $window.FindName("btnGlobalSet"); $btnDelete = $window.FindName("btnDelete")
 $btnResetForm = $window.FindName("btnResetForm"); $btnFetchBuckets = $window.FindName("btnFetchBuckets")
-$btnConnect = $window.FindName("btnConnect"); $btnDisconnect = $window.FindName("btnDisconnect"); $btnRefreshFolders = $window.FindName("btnRefreshFolders"); $btnSaveMount = $window.FindName("btnSaveMount")
+$btnConnect = $window.FindName("btnConnect"); $btnDisconnect = $window.FindName("btnDisconnect"); $btnSaveMount = $window.FindName("btnSaveMount")
 
 $btnSignIn = $window.FindName("btnSignIn")
 $txtAuthStatus = $window.FindName("txtAuthStatus")
@@ -1669,7 +1668,6 @@ function Reset-Editor {
     $lstMounts.SelectedItem = $null
     $btnConnect.IsEnabled = $false
     $btnDisconnect.IsEnabled = $false
-    $btnRefreshFolders.IsEnabled = $false
     $btnDelete.IsEnabled = $false
     $btnSaveMount.Content = "Save and Mount"
 
@@ -1806,16 +1804,13 @@ $lstMounts.Add_SelectionChanged({
         if (Get-MountPID $m.DriveLetter) {
             $btnConnect.IsEnabled = $false
             $btnDisconnect.IsEnabled = $true
-            $btnRefreshFolders.IsEnabled = $true
         } else {
             $btnConnect.IsEnabled = $true
             $btnDisconnect.IsEnabled = $false
-            $btnRefreshFolders.IsEnabled = $false
         }
     } else {
         $btnConnect.IsEnabled = $false
         $btnDisconnect.IsEnabled = $false
-        $btnRefreshFolders.IsEnabled = $false
     }
 })
 
@@ -1940,95 +1935,12 @@ $btnConnect.Add_Click({
         
         if ($success) {
             $btnDisconnect.IsEnabled = $true
-            $btnRefreshFolders.IsEnabled = $true
         } else {
             $btnConnect.IsEnabled = $true
-            $btnRefreshFolders.IsEnabled = $false
         }
         
         if ($global:CurrentEditId -eq $m.Id) { Load-IntoEditor $m.Id }
         foreach ($item in $lstMounts.Items) { if ($item.Id -eq $m.Id) { $lstMounts.SelectedItem = $item; break } }
-    }
-})
-
-$btnRefreshFolders.Add_Click({
-    if ($lstMounts.SelectedItem) {
-        $m = $global:appConfig.Mounts | Where-Object { $_.Id -eq $lstMounts.SelectedItem.Id }
-        $btnRefreshFolders.IsEnabled = $false
-        $oldContent = $btnRefreshFolders.Content
-        $btnRefreshFolders.Content = "Refreshing..."
-        [System.Windows.Forms.Application]::DoEvents()
-
-        $success = Refresh-MountDirectoryCache $m
-
-        if (-not $success) {
-            $btnRefreshFolders.Content = $oldContent
-            [System.Windows.MessageBox]::Show("Unable to refresh this drive. Disconnect and reconnect it once so the updated rclone refresh service is enabled.", "Refresh Failed", 0, 48)
-            $btnRefreshFolders.IsEnabled = $null -ne (Get-MountPID $m.DriveLetter)
-            return
-        }
-
-        $browse = Select-RefreshParentFolder $m
-        if ($browse.Cancelled) {
-            $btnRefreshFolders.Content = $oldContent
-            [System.Windows.MessageBox]::Show("Refresh folder(s) has been completed, please refresh your file browser.", "Refresh Complete", 0, 64)
-            $btnRefreshFolders.IsEnabled = $true
-            return
-        }
-
-        if (-not $browse.Success) {
-            $btnRefreshFolders.Content = $oldContent
-            [System.Windows.MessageBox]::Show("Folder cache refreshed, but Refresh Folder could not use the selected folder.`n`n$($browse.Message)", "Refresh Folder", 0, 48)
-            $btnRefreshFolders.IsEnabled = $true
-            return
-        }
-
-        $parentPath = $browse.Path
-
-        $btnRefreshFolders.Content = "Scanning..."
-        [System.Windows.Forms.Application]::DoEvents()
-
-        $scan = Find-MissingConsoleFolders $m $parentPath
-        if (-not $scan.Success) {
-            $btnRefreshFolders.Content = $oldContent
-            [System.Windows.MessageBox]::Show("Folder cache refreshed, but Refresh Folder could not scan Console folders.`n`n$($scan.Message)", "Refresh Folder Scan Failed", 0, 48)
-            $btnRefreshFolders.IsEnabled = $true
-            return
-        }
-
-        if ($scan.Missing.Count -eq 0) {
-            $btnRefreshFolders.Content = $oldContent
-            [System.Windows.MessageBox]::Show("Refresh folder(s) has been completed, please refresh your file browser.", "Refresh Folder Complete", 0, 64)
-            $btnRefreshFolders.IsEnabled = $true
-            return
-        }
-
-        $selection = Show-RefreshFolderSelectionDialog $scan.Missing
-        if (-not $selection.Confirmed) {
-            $btnRefreshFolders.Content = $oldContent
-            $btnRefreshFolders.IsEnabled = $true
-            return
-        }
-
-        $btnRefreshFolders.Content = "Repairing..."
-        [System.Windows.Forms.Application]::DoEvents()
-
-        $totalCreated = 0
-        foreach ($folder in $selection.Selected) {
-            $repair = Repair-GcsFolderMarkers $m $folder
-            if (-not $repair.Success) {
-                $btnRefreshFolders.Content = $oldContent
-                [System.Windows.MessageBox]::Show("Refresh Folder stopped while repairing '$folder'.`n`n$($repair.Message)", "Refresh Folder Failed", 0, 48)
-                $btnRefreshFolders.IsEnabled = $true
-                return
-            }
-            $totalCreated += $repair.Count
-        }
-
-        Refresh-MountDirectoryCache $m | Out-Null
-        $btnRefreshFolders.Content = $oldContent
-        [System.Windows.MessageBox]::Show("Refresh folder(s) has been completed, please refresh your file browser.", "Refresh Folder Complete", 0, 64)
-        $btnRefreshFolders.IsEnabled = $true
     }
 })
 
@@ -2037,7 +1949,7 @@ $btnDisconnect.Add_Click({
         $m = $global:appConfig.Mounts | Where-Object { $_.Id -eq $lstMounts.SelectedItem.Id }
         Stop-MountJob $m.DriveLetter
         Refresh-Sidebar
-        $btnConnect.IsEnabled = $true; $btnDisconnect.IsEnabled = $false; $btnRefreshFolders.IsEnabled = $false
+        $btnConnect.IsEnabled = $true; $btnDisconnect.IsEnabled = $false
         if ($global:CurrentEditId -eq $m.Id) { Load-IntoEditor $m.Id }
         foreach ($item in $lstMounts.Items) { if ($item.Id -eq $m.Id) { $lstMounts.SelectedItem = $item; break } }
     }
