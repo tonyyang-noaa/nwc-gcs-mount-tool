@@ -2,6 +2,8 @@
 
 `gcs_mount.ps1` is a Windows PowerShell WPF application for mounting Google Cloud Storage buckets as local Windows drive letters. It wraps `rclone`, WinFsp, and the Google Cloud CLI with a small desktop UI so users can sign in, save bucket mount profiles, connect or disconnect drives, and optionally auto-mount selected buckets at Windows login.
 
+The repo also includes `gcs_mount_admin.ps1`, an administrative/maintenance variant of the same tool. It keeps the `Refresh Folder` button that was removed from the standard user-facing script.
+
 ## What It Does
 
 - Mounts one or more Google Cloud Storage buckets as Windows drives.
@@ -46,6 +48,38 @@ powershell.exe -ExecutionPolicy Bypass -File .\gcs_mount.ps1 -AutoMount
 
 Auto-mount mode waits briefly, mounts profiles marked for auto-mount, and can start hidden through the Windows Startup shortcut created by the app.
 
+To run the admin/maintenance variant:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\gcs_mount_admin.ps1
+```
+
+## Script Variants
+
+### `gcs_mount.ps1`
+
+Use this as the standard user-facing application. It supports authentication, bucket selection, drive mounting, disconnection, auto-mount, transfer tuning, and automatic Cloud Console folder cleanup.
+
+This version does not show the `Refresh Folder` button. It is intended for normal daily use so users have a simpler interface and do not need to decide when to run manual folder repair actions.
+
+### `gcs_mount_admin.ps1`
+
+Use this version for administrative maintenance or troubleshooting. It includes everything in `gcs_mount.ps1` plus the `Refresh Folder` button.
+
+The `Refresh Folder` workflow is useful when Google Cloud Console shows folder records that the mounted drive cannot list, especially empty folders created directly in the Cloud Console. It lets an administrator select a mounted-drive parent folder, scan for Console folders missing from the mounted drive, and create rclone-visible compatibility markers for selected folders.
+
+Use `gcs_mount_admin.ps1` when:
+
+- an administrator needs to repair folder visibility between Cloud Console and the mounted drive;
+- empty Cloud Console folders need compatibility markers so rclone can show them;
+- troubleshooting requires the manual folder refresh workflow.
+
+Use `gcs_mount.ps1` when:
+
+- users only need to mount, disconnect, and auto-mount buckets;
+- the simpler production UI is preferred;
+- folder cleanup should be handled automatically in the background.
+
 ## First-Time Setup
 
 1. Run `gcs_mount.ps1`.
@@ -67,6 +101,12 @@ If `Invoke-ps2exe` is available, build the GUI executable with:
 
 ```powershell
 Invoke-ps2exe -inputFile .\gcs_mount.ps1 -outputFile .\dist\GCS_Manager.exe -noConsole -STA -title 'GCS Bucket Mounting Tool' -description 'GCS Bucket Mounting Tool' -product 'GCS Bucket Mounting Tool' -version '0.0.0.0'
+```
+
+To package the admin/maintenance variant, change the input and output names:
+
+```powershell
+Invoke-ps2exe -inputFile .\gcs_mount_admin.ps1 -outputFile .\dist\GCS_Manager_Admin.exe -noConsole -STA -title 'GCS Bucket Mounting Tool Admin' -description 'GCS Bucket Mounting Tool Admin' -product 'GCS Bucket Mounting Tool' -version '0.0.0.0'
 ```
 
 Run the packaged app with:
@@ -127,5 +167,5 @@ The application is implemented in:
 
 ```text
 gcs_mount.ps1
+gcs_mount_admin.ps1
 ```
-
