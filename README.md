@@ -2,9 +2,11 @@
 
 A Windows PowerShell WPF desktop application suite for mounting Google Cloud Storage (GCS) buckets as local Windows drive letters. It wraps `rclone`, WinFsp, and the Google Cloud CLI (`gcloud`) into an intuitive graphical interface that handles authentication, multi-bucket profile management, drive connection/disconnection, performance tuning, and automated folder lifecycle synchronization.
 
-The repository contains two script variants:
-- **`gcs_mount.ps1`**: The standard user-facing application for everyday mounting, auto-mounting, and automated background folder cleanup.
-- **`gcs_mount_admin.ps1`**: The administrative/maintenance variant that includes an interactive **Refresh Folder** utility to diagnose and repair folder visibility mismatches between Google Cloud Console and Windows File Explorer.
+The repository provides both source PowerShell scripts and pre-packaged Windows executables:
+- **`GCS_Mounting_Tool.exe`**: The standalone, pre-compiled Windows executable built from `gcs_mount.ps1`. Can be run directly without PowerShell execution policy configuration.
+- **`gcs_mount.ps1`**: The standard user-facing PowerShell source script for everyday mounting, auto-mounting, and automated background folder cleanup.
+- **`gcs_mount_admin.ps1`**: The administrative/maintenance PowerShell script that includes an interactive **Refresh Folder** utility to diagnose and repair folder visibility mismatches between Google Cloud Console and Windows File Explorer.
+- **`network_drive.ico`**: The application icon embedded in packaged executables.
 
 ---
 
@@ -12,20 +14,24 @@ The repository contains two script variants:
 
 - [Overview & Architecture](#overview--architecture)
 - [Key Features](#key-features)
-- [Script Comparison (`gcs_mount.ps1` vs `gcs_mount_admin.ps1`)](#script-comparison)
+- [Script & Executable Comparison](#script--executable-comparison)
+- [Quick Start with `GCS_Mounting_Tool.exe`](#quick-start-with-gcs_mounting_toolexe)
 - [How Folder Synchronization & Repair Works](#how-folder-synchronization--repair-works)
   - [Background Delete Cleanup & Root Reconciliation](#background-delete-cleanup--root-reconciliation)
   - [Manual Folder Repair (Admin Variant)](#manual-folder-repair-admin-variant)
 - [Prerequisites & System Requirements](#prerequisites--system-requirements)
 - [Usage & Execution](#usage--execution)
-  - [Interactive Mode](#interactive-mode)
-  - [Auto-Mount Mode](#auto-mount-mode)
-  - [Admin Mode](#admin-mode)
+  - [Running the Packaged Executable (`GCS_Mounting_Tool.exe`)](#running-the-packaged-executable-gcs_mounting_toolexe)
+  - [Running from PowerShell (`gcs_mount.ps1` / `gcs_mount_admin.ps1`)](#running-from-powershell-gcs_mountps1--gcs_mount_adminps1)
+  - [Auto-Mount Mode (Background Startup)](#auto-mount-mode-background-startup)
 - [First-Time Setup Guide](#first-time-setup-guide)
+- [Packaging PowerShell Scripts to Standalone Executables (`.exe`)](#packaging-powershell-scripts-to-standalone-executables-exe)
+  - [Step 1: Install `ps2exe`](#step-1-install-ps2exe)
+  - [Step 2: Parameter Reference](#step-2-parameter-reference)
+  - [Step 3: Build Commands](#step-3-build-commands)
 - [Configuration & Performance Tuning](#configuration--performance-tuning)
   - [Global Settings (`settings_multi.json`)](#global-settings-settings_multijson)
   - [Transfer & Cache Performance Options](#transfer--cache-performance-options)
-- [Packaging as Standalone Executables (`.exe`)](#packaging-as-standalone-executables-exe)
 - [Runtime Files & Directory Structure](#runtime-files--directory-structure)
 - [Troubleshooting & Diagnostics](#troubleshooting--diagnostics)
 
@@ -42,7 +48,7 @@ Google Cloud Storage is an object store without native filesystem directory conc
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                    WPF Desktop Application                       │
-│             (gcs_mount.ps1 / gcs_mount_admin.ps1)                │
+│        (GCS_Mounting_Tool.exe / gcs_mount.ps1 / admin)           │
 └───────────────┬───────────────────────────────┬──────────────────┘
                 │                               │
        ┌────────▼────────┐             ┌────────▼────────┐
@@ -67,6 +73,7 @@ Google Cloud Storage is an object store without native filesystem directory conc
 
 ## Key Features
 
+- **Pre-Compiled Standalone Binary**: Includes `GCS_Mounting_Tool.exe` for immediate execution without needing PowerShell script execution permissions.
 - **Multi-Drive Profile Management**: Configure and save multiple bucket mount profiles, each with its own bucket name, Google Cloud project ID, assigned drive letter, and auto-mount setting.
 - **Streamlined Google Cloud Authentication**:
   - Direct browser-based OAuth authentication flow.
@@ -84,9 +91,9 @@ Google Cloud Storage is an object store without native filesystem directory conc
 
 ---
 
-## Script Comparison
+## Script & Executable Comparison
 
-| Feature / Aspect | `gcs_mount.ps1` (Standard) | `gcs_mount_admin.ps1` (Admin) |
+| Feature / Aspect | `GCS_Mounting_Tool.exe` / `gcs_mount.ps1` (Standard) | `gcs_mount_admin.ps1` (Admin / Maintenance) |
 | :--- | :--- | :--- |
 | **Target Audience** | General end users, everyday workstations | System administrators, power users, support staff |
 | **Primary Use Case** | Daily mounting, browsing, and auto-mounting GCS buckets | Troubleshooting, bucket maintenance, and folder repair |
@@ -94,7 +101,17 @@ Google Cloud Storage is an object store without native filesystem directory conc
 | **Folder Visibility Repair** | Fully automated background cleanup only | Automated background cleanup **plus** interactive manual scanning and repair modal |
 | **VFS Cache Invalidation** | Automatic on mount/unmount | On-demand via `Refresh-MountDirectoryCache` (using rclone Remote Control API) |
 | **Marker Generation** | Automatic upon standard file/folder operations | Manual recursive batch generation for selected Cloud Console folders |
-| **Recommended EXE Name** | `GCS_Manager.exe` | `GCS_Manager_Admin.exe` |
+| **Packaged Binary** | `GCS_Mounting_Tool.exe` | `GCS_Mounting_Tool_Admin.exe` |
+
+---
+
+## Quick Start with `GCS_Mounting_Tool.exe`
+
+If you are using the pre-compiled `GCS_Mounting_Tool.exe`, you can start using it immediately without configuring PowerShell execution policies:
+
+1. Double-click **`GCS_Mounting_Tool.exe`** in Windows File Explorer (or run `.\GCS_Mounting_Tool.exe` in terminal).
+2. Follow the [First-Time Setup Guide](#first-time-setup-guide) to configure settings and authenticate.
+3. The executable runs as a native windowed GUI application without a background console window and embeds the `network_drive.ico` icon.
 
 ---
 
@@ -107,7 +124,7 @@ Google Cloud Storage buckets (especially with Hierarchical Namespace enabled) ma
 - **Deleted Folder Lingering**: When a user deletes a folder from Windows File Explorer, Windows/rclone removes the local cached representation, but the GCS Cloud Console folder record may remain visible on the web.
 
 ### Background Delete Cleanup & Root Reconciliation
-Both scripts implement automated background synchronization:
+Both scripts/binaries implement automated background synchronization:
 1. **Delete Watcher (`Start-ConsoleFolderDeleteWatcher`)**:
    - A `FileSystemWatcher` monitors the mounted drive for folder delete events.
    - A log watcher monitors the per-drive rclone log (`rclone_<drive>.log`) for rclone VFS deletion events (`Removing directory` / `vfs cache: removed cache file`).
@@ -130,7 +147,7 @@ In `gcs_mount_admin.ps1`, the **Refresh Folder** workflow handles the reverse sc
 
 ## Prerequisites & System Requirements
 
-1. **Operating System**: Windows 10 / Windows 11 / Windows Server with **Windows PowerShell 5.1**.
+1. **Operating System**: Windows 10 / Windows 11 / Windows Server with .NET Framework 4.5+ (and **Windows PowerShell 5.1** if running scripts).
 2. **WinFsp**: Required for mounting drives in Windows. [Download WinFsp](https://winfsp.dev/).
 3. **rclone**: Version 1.58+ recommended. [Download rclone](https://rclone.org/).
 4. **Google Cloud CLI (`gcloud`)**: Required for Console folder cleanup and scanning. [Install gcloud CLI](https://cloud.google.com/sdk/docs/install).
@@ -140,29 +157,43 @@ In `gcs_mount_admin.ps1`, the **Refresh Folder** workflow handles the reverse sc
 
 ## Usage & Execution
 
-### Interactive Mode
-Run the standard user script:
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\gcs_mount.ps1
-```
+### Running the Packaged Executable (`GCS_Mounting_Tool.exe`)
 
-### Auto-Mount Mode
-Starts the application in background/hidden mode. It waits 20 seconds for network services to stabilize, mounts all profiles marked with `AutoMount: true`, and sits in the system tray:
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\gcs_mount.ps1 -AutoMount
-```
+- **Interactive GUI**:
+  ```cmd
+  GCS_Mounting_Tool.exe
+  ```
+- **Auto-Mount Mode (Starts hidden to system tray)**:
+  ```cmd
+  GCS_Mounting_Tool.exe -AutoMount
+  ```
 
-### Admin Mode
-Run the administrative maintenance script:
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\gcs_mount_admin.ps1
-```
+### Running from PowerShell (`gcs_mount.ps1` / `gcs_mount_admin.ps1`)
+
+- **Standard User Script**:
+  ```powershell
+  powershell.exe -ExecutionPolicy Bypass -File .\gcs_mount.ps1
+  ```
+- **Admin Maintenance Script**:
+  ```powershell
+  powershell.exe -ExecutionPolicy Bypass -File .\gcs_mount_admin.ps1
+  ```
+
+### Auto-Mount Mode (Background Startup)
+
+When `-AutoMount` is specified:
+1. The app initializes silently and hides its main window.
+2. It waits 20 seconds for Windows networking, network adapters, and security credentials to initialize.
+3. Mounts all profiles where `AutoMount: true` is saved in `settings_multi.json`.
+4. Resides in the Windows system tray. Users can double-click the tray icon to open the full UI.
+
+The app automatically registers this parameter in your Windows Startup directory when auto-mount is enabled for any profile.
 
 ---
 
 ## First-Time Setup Guide
 
-1. **Launch the Application**: Run `gcs_mount.ps1` (or the compiled `.exe`).
+1. **Launch the Application**: Run `GCS_Mounting_Tool.exe` (or `gcs_mount.ps1`).
 2. **Configure Global Settings**:
    - Click **Settings** in the bottom-left corner.
    - If `rclone.exe` or `WinFsp` are not in your system `PATH`, specify their folder paths.
@@ -179,6 +210,68 @@ powershell.exe -ExecutionPolicy Bypass -File .\gcs_mount_admin.ps1
    - (Optional) Check **Auto-mount this drive at Windows login**.
    - Click **Save and Mount**.
 5. **Verify**: Open Windows File Explorer. Your selected drive letter will appear with the bucket name as the volume label.
+
+---
+
+## Packaging PowerShell Scripts to Standalone Executables (`.exe`)
+
+You can convert any `.ps1` script in this repository into a standalone Windows `.exe` executable using the `ps2exe` PowerShell module. This bundles the script into a native Windows executable that runs without opening a console window and embeds file metadata and icons.
+
+### Step 1: Install `ps2exe`
+
+Open Windows PowerShell and install `ps2exe` from the PowerShell Gallery (run once):
+
+```powershell
+Install-Module -Name ps2exe -Scope CurrentUser -Force
+```
+
+### Step 2: Parameter Reference
+
+When compiling GUI PowerShell applications with `Invoke-ps2exe`, the following parameters are critical:
+
+| Parameter | Value | Purpose |
+| :--- | :--- | :--- |
+| `-inputFile` | `.\gcs_mount.ps1` | The source PowerShell script to bundle. |
+| `-outputFile` | `.\GCS_Mounting_Tool.exe` | The destination `.exe` binary path. |
+| `-iconFile` | `.\network_drive.ico` | Embeds the application icon into the compiled `.exe`. |
+| `-noConsole` | Switch | **Mandatory for WPF/GUI apps**. Suppresses the black Windows console/command prompt window on launch. |
+| `-STA` | Switch | **Mandatory for WPF & WinForms**. Forces the executable to run in Single-Threaded Apartment mode required by UI components. |
+| `-title` | String | Sets the application title in Windows file properties. |
+| `-description` | String | Sets the file description in Windows file properties. |
+| `-product` | String | Sets the product name in Windows file properties. |
+| `-version` | String | Version number (e.g., `2.0.0.0`). |
+
+### Step 3: Build Commands
+
+#### 1. Compile Standard User Tool (`GCS_Mounting_Tool.exe`)
+
+```powershell
+Invoke-ps2exe `
+    -inputFile .\gcs_mount.ps1 `
+    -outputFile .\GCS_Mounting_Tool.exe `
+    -iconFile .\network_drive.ico `
+    -noConsole `
+    -STA `
+    -title 'GCS Bucket Mounting Tool' `
+    -description 'Google Cloud Storage Drive Mount Tool' `
+    -product 'GCS Bucket Mounting Tool' `
+    -version '2.0.0.0'
+```
+
+#### 2. Compile Admin / Maintenance Tool (`GCS_Mounting_Tool_Admin.exe`)
+
+```powershell
+Invoke-ps2exe `
+    -inputFile .\gcs_mount_admin.ps1 `
+    -outputFile .\GCS_Mounting_Tool_Admin.exe `
+    -iconFile .\network_drive.ico `
+    -noConsole `
+    -STA `
+    -title 'GCS Bucket Mounting Tool Admin' `
+    -description 'Google Cloud Storage Drive Mount Tool (Admin Maintenance)' `
+    -product 'GCS Bucket Mounting Tool' `
+    -version '2.0.0.0'
+```
 
 ---
 
@@ -230,38 +323,6 @@ Settings and profiles are stored in `%APPDATA%\GCSMountApp\settings_multi.json`:
 
 ---
 
-## Packaging as Standalone Executables (`.exe`)
-
-You can compile the scripts into standalone `.exe` binaries using `ps2exe` / `Invoke-ps2exe`:
-
-### Standard Tool (`GCS_Manager.exe`)
-```powershell
-Invoke-ps2exe `
-    -inputFile .\gcs_mount.ps1 `
-    -outputFile .\dist\GCS_Manager.exe `
-    -noConsole `
-    -STA `
-    -title 'GCS Bucket Mounting Tool' `
-    -description 'GCS Bucket Mounting Tool' `
-    -product 'GCS Bucket Mounting Tool' `
-    -version '2.0.0.0'
-```
-
-### Admin / Maintenance Tool (`GCS_Manager_Admin.exe`)
-```powershell
-Invoke-ps2exe `
-    -inputFile .\gcs_mount_admin.ps1 `
-    -outputFile .\dist\GCS_Manager_Admin.exe `
-    -noConsole `
-    -STA `
-    -title 'GCS Bucket Mounting Tool Admin' `
-    -description 'GCS Bucket Mounting Tool Admin' `
-    -product 'GCS Bucket Mounting Tool' `
-    -version '2.0.0.0'
-```
-
----
-
 ## Runtime Files & Directory Structure
 
 All application configuration and runtime artifacts reside under `%APPDATA%\GCSMountApp`:
@@ -290,7 +351,7 @@ All application configuration and runtime artifacts reside under `%APPDATA%\GCSM
   - Ensure you have entered a valid Google Cloud **Project ID**.
   - Verify your Google Cloud account has `storage.buckets.list` permissions in that project.
 - **Empty folders created in Google Cloud Console do not appear in File Explorer**:
-  - Use `gcs_mount_admin.ps1`, click **Refresh Folder**, select the parent folder, and apply the repair markers.
+  - Use `gcs_mount_admin.ps1` (or `GCS_Mounting_Tool_Admin.exe`), click **Refresh Folder**, select the parent folder, and apply the repair markers.
 - **Recently deleted empty folder still shows in Cloud Console**:
   - The background reconciliation runs every 15 seconds. Wait a few moments, then refresh the Google Cloud Console web page.
   - Check `%APPDATA%\GCSMountApp\rclone.log` to view folder cleanup activity.
